@@ -1,0 +1,157 @@
+:root {
+  --bg: #f4f6fb;
+  --card: #ffffff;
+  --text: #182033;
+  --muted: #73819e;
+  --primary: #1f6feb;
+  --danger: #dc2626;
+  --border: #dce3f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  background: linear-gradient(160deg, #eef4ff, #f7fbff 50%, #f4f6fb);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.app {
+  width: min(680px, 100%);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 10px 28px rgba(31, 61, 135, 0.08);
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 1.6rem;
+}
+
+.todo-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+input,
+button {
+  border-radius: 10px;
+  font-size: 0.95rem;
+}
+
+input {
+  border: 1px solid var(--border);
+  padding: 11px 12px;
+}
+
+button {
+  border: 1px solid transparent;
+  background: var(--primary);
+  color: white;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  opacity: 0.92;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.controls button {
+  background: #edf2ff;
+  color: #223055;
+}
+
+.controls button.active {
+  background: var(--primary);
+  color: white;
+}
+
+.todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.todo-item {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.todo-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.todo-text {
+  overflow-wrap: anywhere;
+}
+
+.todo-item.completed .todo-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.delete-btn {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 6px 10px;
+}
+
+.footer {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#todo-count {
+  margin: 0;
+  color: var(--muted);
+}
+
+#clear-completed {
+  background: var(--danger);
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 18px 8px;
+}
+
+@media (max-width: 600px) {
+  .app {
+    padding: 16px;
+  }
+
+  .todo-form {
+    grid-template-columns: 1fr;
+  }
+
+  .footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+}
