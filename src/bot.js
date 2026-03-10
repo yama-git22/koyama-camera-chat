@@ -4,6 +4,10 @@ import Parser from "rss-parser";
 import OpenAI from "openai";
 import { App } from "@slack/bolt";
 import { Client, GatewayIntentBits } from "discord.js";
+import { spawn } from "node:child_process";
+import { createReadStream } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 
 const parser = new Parser({ timeout: 15000 });
 
@@ -43,6 +47,10 @@ const DISCORD_CHAT_CHANNEL_ID = process.env.CHAT_CHANNEL_ID?.trim() || null;
 const SLACK_CHAT_ENABLED = toBool(process.env.SLACK_CHAT_ENABLED, true);
 const SLACK_CHAT_PREFIX = (process.env.SLACK_CHAT_PREFIX || "news").trim();
 const SLACK_CHAT_CHANNEL_ID = process.env.SLACK_CHAT_CHANNEL_ID?.trim() || null;
+const SLACK_CAMERA_ENABLED = toBool(process.env.SLACK_CAMERA_ENABLED, true);
+const SLACK_CAMERA_CHANNEL_ID = process.env.SLACK_CAMERA_CHANNEL_ID?.trim() || null;
+const CAMERA_CAPTURE_TIME_MS = toPositiveInt(process.env.CAMERA_CAPTURE_TIME_MS, 1200);
+const CAMERA_OUTPUT_DIR = (process.env.CAMERA_OUTPUT_DIR || "output/camera").trim();
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -55,6 +63,7 @@ const discordClient = new Client({
 let slackApp = null;
 let isJobReady = false;
 let hasRunOnStart = false;
+let isCameraCaptureRunning = false;
 
 async function start() {
   if (SLACK_ENABLED) {
@@ -129,12 +138,17 @@ async function startSlack() {
   });
 
   slackApp.event("app_mention", async ({ event, client, say }) => {
-    if (!SLACK_CHAT_ENABLED) return;
-    if (SLACK_CHAT_CHANNEL_ID && event.channel !== SLACK_CHAT_CHANNEL_ID) return;
-
     const botUserId = await getSlackBotUserId(client);
     let userText = (event.text || "").replace(new RegExp(`<@${botUserId}>`, "g"), "").trim();
     if (!userText) userText = "こんにちは";
+    if (isCameraCommand(userText)) {
+      if (SLACK_CAMERA_CHANNEL_ID && event.channel !== SLACK_CAMERA_CHANNEL_ID) return;
+      await handleSlackCameraCommand(event.channel, event.ts, event.user || "slack-user");
+      return;
+    }
+
+    if (!SLACK_CHAT_ENABLED) return;
+    if (SLACK_CHAT_CHANNEL_ID && event.channel !== SLACK_CHAT_CHANNEL_ID) return;
 
     const username = event.user || "slack-user";
     try {
@@ -149,13 +163,24 @@ async function startSlack() {
   });
 
   slackApp.message(async ({ message, say }) => {
-    if (!SLACK_CHAT_ENABLED) return;
     if (!message || message.subtype || !message.text) return;
     if (message.bot_id) return;
-    if (SLACK_CHAT_CHANNEL_ID && message.channel !== SLACK_CHAT_CHANNEL_ID) return;
-    if (!hasPrefix(message.text, SLACK_CHAT_PREFIX)) return;
+    const rawText = message.text.trim();
+    const prefixed = hasPrefix(rawText, SLACK_CHAT_PREFIX);
+    const prefixedText = prefixed ? removePrefix(rawText, SLACK_CHAT_PREFIX) : rawText;
+    const cameraRequested = isCameraCommand(rawText) || (prefixed && isCameraCommand(prefixedText));
 
-    const userText = removePrefix(message.text, SLACK_CHAT_PREFIX) || "こんにちは";
+    if (cameraRequested) {
+      if (SLACK_CAMERA_CHANNEL_ID && message.channel !== SLACK_CAMERA_CHANNEL_ID) return;
+      await handleSlackCameraCommand(message.channel, message.ts, message.user || "slack-user");
+      return;
+    }
+
+    if (!SLACK_CHAT_ENABLED) return;
+    if (SLACK_CHAT_CHANNEL_ID && message.channel !== SLACK_CHAT_CHANNEL_ID) return;
+    if (!prefixed) return;
+
+    const userText = prefixedText || "こんにちは";
     const username = message.user || "slack-user";
 
     try {
@@ -172,6 +197,10 @@ async function startSlack() {
   await slackApp.start();
   console.log("[SLACK] Socket mode app started");
   console.log(`[SLACK] Chat: ${SLACK_CHAT_ENABLED ? "enabled" : "disabled"} (prefix: '${SLACK_CHAT_PREFIX}')`);
+  console.log(`[SLACK] Camera: ${SLACK_CAMERA_ENABLED ? "enabled" : "disabled"} (commands: 'camera', 'カメラ')`);
+  if (SLACK_CAMERA_CHANNEL_ID) {
+    console.log(`[SLACK] Camera channel: ${SLACK_CAMERA_CHANNEL_ID}`);
+  }
 
   if (RUN_ON_START && !DISCORD_ENABLED && !hasRunOnStart) {
     hasRunOnStart = true;
@@ -416,6 +445,118 @@ async function getSlackBotUserId(client) {
   return auth.user_id;
 }
 
+async function handleSlackCameraCommand(channelId, threadTs, username) {
+  if (!slackApp) throw new Error("Slack app is not initialized.");
+
+  if (!SLACK_CAMERA_ENABLED) {
+    await slackApp.client.chat.postMessage({
+      channel: channelId,
+      text: "カメラ機能は無効になっとるけん、`SLACK_CAMERA_ENABLED=true` にして再起動してね。",
+      thread_ts: threadTs,
+    });
+    return;
+  }
+
+  if (isCameraCaptureRunning) {
+    await slackApp.client.chat.postMessage({
+      channel: channelId,
+      text: "いま撮影中やけん、少し待ってもう一回 `camera` って送ってね。",
+      thread_ts: threadTs,
+    });
+    return;
+  }
+
+  isCameraCaptureRunning = true;
+  try {
+    const filePath = await captureSlackCameraImage();
+    await slackApp.client.files.uploadV2({
+      channel_id: channelId,
+      file: createReadStream(filePath),
+      filename: path.basename(filePath),
+      title: "Raspberry Pi Camera",
+      initial_comment: `${username}さんのリクエストで撮影した画像です。`,
+    });
+    console.log(`[SLACK CAMERA] Uploaded image: ${filePath}`);
+  } catch (err) {
+    console.error("[SLACK CAMERA ERROR]", err);
+    await slackApp.client.chat.postMessage({
+      channel: channelId,
+      text:
+        "カメラ撮影に失敗したけん、`rpicam-still` か `libcamera-still` が使えるか確認してみて。",
+      thread_ts: threadTs,
+    });
+  } finally {
+    isCameraCaptureRunning = false;
+  }
+}
+
+async function captureSlackCameraImage() {
+  const outputDir = path.resolve(CAMERA_OUTPUT_DIR);
+  await mkdir(outputDir, { recursive: true });
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outputPath = path.join(outputDir, `camera-${timestamp}.jpg`);
+  const commands = [
+    {
+      bin: "rpicam-still",
+      args: ["-o", outputPath, "--nopreview", "--timeout", String(CAMERA_CAPTURE_TIME_MS)],
+    },
+    {
+      bin: "libcamera-still",
+      args: ["-o", outputPath, "--nopreview", "-t", String(CAMERA_CAPTURE_TIME_MS)],
+    },
+  ];
+
+  let lastError = null;
+  for (const command of commands) {
+    try {
+      await runCommand(command.bin, command.args, CAMERA_CAPTURE_TIME_MS + 10000);
+      return outputPath;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    `Could not capture image with rpicam-still/libcamera-still. ${lastError?.message || "Unknown error"}`
+  );
+}
+
+function runCommand(command, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`${command} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(new Error(`${command} failed to start: ${err.message}`));
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const details = (stderr || stdout || "no output").trim();
+      reject(new Error(`${command} exited with code ${code}: ${details}`));
+    });
+  });
+}
+
 function truncateForPost(text) {
   if (text.length <= 8000) return text;
   return text.slice(0, 7900) + "\n\n(文字数上限のため省略)";
@@ -453,6 +594,12 @@ function removePrefix(raw, prefix) {
   return trimmed;
 }
 
+function isCameraCommand(text) {
+  if (!text) return false;
+  const trimmed = text.trim();
+  return /^camera(?:\s|$)/i.test(trimmed) || /^カメラ(?:\s|$)/.test(trimmed);
+}
+
 function validateRequired(keys, groupName) {
   for (const key of keys) {
     if (!process.env[key]) {
@@ -465,6 +612,13 @@ function validateRequired(keys, groupName) {
 function toBool(value, fallback) {
   if (value == null || value === "") return fallback;
   return String(value).toLowerCase() === "true";
+}
+
+function toPositiveInt(value, fallback) {
+  if (value == null || value === "") return fallback;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return Math.floor(num);
 }
 
 start().catch((err) => {
