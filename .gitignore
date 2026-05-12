@@ -1,3 +1,9 @@
 node_modules
 .env
 npm-debug.log*
+.DS_Store
+logs/
+output/note-drafts/
+output/note-x-state.json
+output/note-x-history.ndjson
+output/network-paper-bot-state.json

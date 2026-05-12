@@ -6,7 +6,15 @@
   "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
-    "zoom:summary": "node src/zoom-summary.js"
+    "zoom:summary": "node src/zoom-summary.js",
+    "note:x:auto": "node src/note-x-automation.js",
+    "note:x:once": "node src/note-x-automation.js --once",
+    "paper:network": "node src/network-paper-bot.js",
+    "paper:network:once": "node src/network-paper-bot.js --once",
+    "paper:network:dry-run": "node src/network-paper-bot.js --once --dry-run",
+    "paper:network:install-launchd": "./scripts/install-network-paper-bot-launchd.sh",
+    "paper:network:restart-launchd": "./scripts/restart-network-paper-bot-launchd.sh",
+    "paper:network:update": "./scripts/update-network-paper-bot.sh"
   },
   "engines": {
     "node": ">=20"
