@@ -26,6 +26,7 @@ const ARXIV_USER_AGENT = (
 ).trim();
 const ARXIV_MAX_RETRIES = toNonNegativeInt(process.env.ARXIV_MAX_RETRIES, 3);
 const ARXIV_RETRY_DELAY_MS = toPositiveInt(process.env.ARXIV_RETRY_DELAY_MS, 20000);
+const ARXIV_TIMEOUT_MS = toPositiveInt(process.env.ARXIV_TIMEOUT_MS, 60000);
 
 const OLLAMA_BASE_URL = stripTrailingSlash(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434");
 const OLLAMA_MODEL = (process.env.OLLAMA_MODEL || "qwen2.5:7b").trim();
@@ -173,13 +174,43 @@ async function fetchRecentPapers() {
   url.searchParams.set("sortBy", "submittedDate");
   url.searchParams.set("sortOrder", "descending");
 
+  console.log(
+    `[PAPER BOT] Fetching arXiv feed (timeout: ${Math.ceil(ARXIV_TIMEOUT_MS / 1000)}s, retries: ${ARXIV_MAX_RETRIES}).`
+  );
+
   for (let attempt = 0; attempt <= ARXIV_MAX_RETRIES; attempt += 1) {
-    const response = await fetchWithTimeout(url.toString(), {
-      headers: {
-        Accept: "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8",
-        "User-Agent": ARXIV_USER_AGENT,
-      },
-    });
+    let response;
+
+    try {
+      response = await fetchWithTimeout(
+        url.toString(),
+        {
+          headers: {
+            Accept: "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8",
+            "User-Agent": ARXIV_USER_AGENT,
+          },
+        },
+        ARXIV_TIMEOUT_MS
+      );
+    } catch (error) {
+      const isTimeout = error?.name === "TimeoutError" || String(error?.message || "").includes("timeout");
+      if (!isTimeout || attempt >= ARXIV_MAX_RETRIES) {
+        throw new Error(
+          isTimeout
+            ? `arXiv API request timed out after ${Math.ceil(ARXIV_TIMEOUT_MS / 1000)}s`
+            : `arXiv API request failed: ${String(error?.message || error)}`
+        );
+      }
+
+      const delayMs = ARXIV_RETRY_DELAY_MS * (attempt + 1);
+      console.warn(
+        `[PAPER BOT] arXiv request timed out. Retry ${attempt + 1}/${ARXIV_MAX_RETRIES} in ${Math.ceil(
+          delayMs / 1000
+        )}s.`
+      );
+      await sleep(delayMs);
+      continue;
+    }
 
     if (response.ok) {
       const xml = await response.text();

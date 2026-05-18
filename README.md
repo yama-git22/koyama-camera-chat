@@ -249,6 +249,7 @@ npm run paper:network
 - `ARXIV_USER_AGENT`: arXivアクセス時のUser-Agent
 - `ARXIV_MAX_RETRIES`: arXiv `429/5xx` 時の再試行回数（既定: `3`）
 - `ARXIV_RETRY_DELAY_MS`: arXiv再試行の基本待機時間ミリ秒（既定: `20000`）
+- `ARXIV_TIMEOUT_MS`: arXiv取得タイムアウトミリ秒（既定: `60000`）
 - `OLLAMA_BASE_URL`: Ollama APIのURL（既定: `http://127.0.0.1:11434`）
 - `OLLAMA_MODEL`: ローカル要約モデル（既定: `qwen2.5:7b`）
 - `OLLAMA_KEEP_ALIVE`: モデル常駐時間（既定: `10m`）

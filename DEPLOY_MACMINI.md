@@ -60,6 +60,7 @@ PAPER_RUN_ON_START=false
 ARXIV_USER_AGENT=network-paper-bot/1.0 (mailto:your_email@example.com)
 ARXIV_MAX_RETRIES=3
 ARXIV_RETRY_DELAY_MS=20000
+ARXIV_TIMEOUT_MS=60000
 OLLAMA_MODEL=qwen2.5:7b
 ```
 
@@ -150,6 +151,10 @@ npm run paper:network:dry-run
 - まず 5分から10分待ってから再実行する
 - セットアップ中に `paper:network:once` を短時間で連打しない
 - 必要なら `.env` で `ARXIV_MAX_RETRIES=5`、`ARXIV_RETRY_DELAY_MS=30000` のように待機を長くする
+
+`TimeoutError` が出た場合:
+- `.env` で `ARXIV_TIMEOUT_MS=120000` に上げて再実行する
+- それでも止まるなら回線または arXiv 側の一時不調を疑い、少し待ってから再試行する
 
 ### launchd の状態確認
 
