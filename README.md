@@ -191,6 +191,7 @@ npm run paper:network
 - `PAPER_SEARCH_QUERY` は arXiv の検索式です。まずは `cat:cs.NI` を既定にしています。
 - 同じ論文を再投稿しないように、投稿済みIDは `output/network-paper-bot-state.json` に保存します。
 - 要約に失敗した場合は、アブストラクトからの簡易要約へフォールバックします。
+- `429` が返った場合は自動で待機して再試行します。セットアップ中は短時間に `paper:network:once` を連打しない方が安全です。
 - Mac mini へ別端末デプロイする場合の手順は `DEPLOY_MACMINI.md` を参照してください。
 
 ## 主な環境変数
@@ -246,6 +247,8 @@ npm run paper:network
 - `PAPER_STATE_FILE`: 既読論文IDの保存先（既定: `output/network-paper-bot-state.json`）
 - `ARXIV_API_URL`: arXiv APIエンドポイント
 - `ARXIV_USER_AGENT`: arXivアクセス時のUser-Agent
+- `ARXIV_MAX_RETRIES`: arXiv `429/5xx` 時の再試行回数（既定: `3`）
+- `ARXIV_RETRY_DELAY_MS`: arXiv再試行の基本待機時間ミリ秒（既定: `20000`）
 - `OLLAMA_BASE_URL`: Ollama APIのURL（既定: `http://127.0.0.1:11434`）
 - `OLLAMA_MODEL`: ローカル要約モデル（既定: `qwen2.5:7b`）
 - `OLLAMA_KEEP_ALIVE`: モデル常駐時間（既定: `10m`）

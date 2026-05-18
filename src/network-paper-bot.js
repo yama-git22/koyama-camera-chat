@@ -24,6 +24,8 @@ const ARXIV_API_URL = (process.env.ARXIV_API_URL || "https://export.arxiv.org/ap
 const ARXIV_USER_AGENT = (
   process.env.ARXIV_USER_AGENT || "network-paper-bot/1.0 (mailto:replace-this@example.com)"
 ).trim();
+const ARXIV_MAX_RETRIES = toNonNegativeInt(process.env.ARXIV_MAX_RETRIES, 3);
+const ARXIV_RETRY_DELAY_MS = toPositiveInt(process.env.ARXIV_RETRY_DELAY_MS, 20000);
 
 const OLLAMA_BASE_URL = stripTrailingSlash(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434");
 const OLLAMA_MODEL = (process.env.OLLAMA_MODEL || "qwen2.5:7b").trim();
@@ -171,21 +173,41 @@ async function fetchRecentPapers() {
   url.searchParams.set("sortBy", "submittedDate");
   url.searchParams.set("sortOrder", "descending");
 
-  const response = await fetchWithTimeout(url.toString(), {
-    headers: {
-      Accept: "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8",
-      "User-Agent": ARXIV_USER_AGENT,
-    },
-  });
+  for (let attempt = 0; attempt <= ARXIV_MAX_RETRIES; attempt += 1) {
+    const response = await fetchWithTimeout(url.toString(), {
+      headers: {
+        Accept: "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8",
+        "User-Agent": ARXIV_USER_AGENT,
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error(`arXiv API request failed: ${response.status} ${response.statusText}`);
+    if (response.ok) {
+      const xml = await response.text();
+      const papers = parseArxivFeed(xml);
+      console.log(`[PAPER BOT] Fetched ${papers.length} paper(s) from arXiv.`);
+      return papers;
+    }
+
+    const details = await readErrorDetails(response);
+    const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
+    const shouldRetry = response.status === 429 || response.status >= 500;
+
+    if (!shouldRetry || attempt >= ARXIV_MAX_RETRIES) {
+      throw new Error(
+        `arXiv API request failed: ${response.status} ${response.statusText}${details ? ` (${details})` : ""}`
+      );
+    }
+
+    const delayMs = retryAfterMs ?? ARXIV_RETRY_DELAY_MS * (attempt + 1);
+    console.warn(
+      `[PAPER BOT] arXiv request throttled or unavailable. Retry ${attempt + 1}/${ARXIV_MAX_RETRIES} in ${Math.ceil(
+        delayMs / 1000
+      )}s.`
+    );
+    await sleep(delayMs);
   }
 
-  const xml = await response.text();
-  const papers = parseArxivFeed(xml);
-  console.log(`[PAPER BOT] Fetched ${papers.length} paper(s) from arXiv.`);
-  return papers;
+  throw new Error("arXiv API request failed after retries.");
 }
 
 function parseArxivFeed(xml) {
@@ -519,6 +541,28 @@ async function readErrorDetails(response) {
   }
 }
 
+function parseRetryAfterMs(value) {
+  if (!value) return null;
+
+  const seconds = Number.parseInt(value, 10);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const dateMs = Date.parse(value);
+  if (!Number.isFinite(dateMs)) {
+    return null;
+  }
+
+  return Math.max(0, dateMs - Date.now());
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function extractXmlTag(xml, tagName) {
   const escaped = escapeForRegex(tagName);
   const regex = new RegExp(`<${escaped}>([\\s\\S]*?)<\\/${escaped}>`, "i");
@@ -723,6 +767,11 @@ function toBool(value, defaultValue = false) {
 function toPositiveInt(value, defaultValue) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+}
+
+function toNonNegativeInt(value, defaultValue) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultValue;
 }
 
 function validateRequired(keys, label) {

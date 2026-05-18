@@ -58,6 +58,8 @@ PAPER_CRON_SCHEDULE=0 9 * * *
 PAPER_RUN_ON_START=false
 
 ARXIV_USER_AGENT=network-paper-bot/1.0 (mailto:your_email@example.com)
+ARXIV_MAX_RETRIES=3
+ARXIV_RETRY_DELAY_MS=20000
 OLLAMA_MODEL=qwen2.5:7b
 ```
 
@@ -143,6 +145,11 @@ ollama pull qwen2.5:7b
 ```bash
 npm run paper:network:dry-run
 ```
+
+`429` が出た場合:
+- まず 5分から10分待ってから再実行する
+- セットアップ中に `paper:network:once` を短時間で連打しない
+- 必要なら `.env` で `ARXIV_MAX_RETRIES=5`、`ARXIV_RETRY_DELAY_MS=30000` のように待機を長くする
 
 ### launchd の状態確認
 
