@@ -17,7 +17,7 @@ const PAPER_RUN_ON_START = toBool(process.env.PAPER_RUN_ON_START, false);
 const PAPER_FETCH_LIMIT = toPositiveInt(process.env.PAPER_FETCH_LIMIT, 25);
 const PAPER_MAX_POSTS = toPositiveInt(process.env.PAPER_MAX_POSTS, 5);
 const PAPER_LOOKBACK_HOURS = toPositiveInt(process.env.PAPER_LOOKBACK_HOURS, 48);
-const PAPER_POST_EMPTY_UPDATE = toBool(process.env.PAPER_POST_EMPTY_UPDATE, false);
+const PAPER_POST_EMPTY_UPDATE = toBool(process.env.PAPER_POST_EMPTY_UPDATE, true);
 const PAPER_STATE_FILE = (process.env.PAPER_STATE_FILE || "output/network-paper-bot-state.json").trim();
 
 const ARXIV_API_URL = (process.env.ARXIV_API_URL || "https://export.arxiv.org/api/query").trim();
@@ -96,11 +96,7 @@ async function runPaperJob() {
       console.log("[PAPER BOT] No new papers found.");
 
       if (PAPER_POST_EMPTY_UPDATE) {
-        const message =
-          `*ネットワーク分野の新着論文まとめ*\n` +
-          `対象期間: 過去${PAPER_LOOKBACK_HOURS}時間\n` +
-          `検索条件: \`${PAPER_SEARCH_QUERY}\`\n` +
-          `新着論文は見つかりませんでした。`;
+        const message = renderNoPapersMessage(startedAt);
 
         if (DRY_RUN) {
           console.log("\n--- DRY RUN HEADER ---\n");
@@ -429,6 +425,17 @@ function renderDigest(papers, generatedAt) {
 
   const paperBodies = papers.map((paper, index) => renderPaper(paper, index + 1));
   return { header, paperBodies };
+}
+
+function renderNoPapersMessage(generatedAt) {
+  return (
+    `*ネットワーク分野の新着論文まとめ*\n` +
+    `生成時刻: ${formatDateTime(generatedAt)}\n` +
+    `検索条件: \`${PAPER_SEARCH_QUERY}\`\n` +
+    `対象期間: 過去${PAPER_LOOKBACK_HOURS}時間\n` +
+    `本日は新しい論文の取得はありませんでした。\n` +
+    `Botは正常に実行されています。`
+  );
 }
 
 function renderPaper(paper, number) {

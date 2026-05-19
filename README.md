@@ -169,6 +169,7 @@ PAPER_RUN_ON_START=false
 PAPER_FETCH_LIMIT=25
 PAPER_MAX_POSTS=5
 PAPER_LOOKBACK_HOURS=48
+PAPER_POST_EMPTY_UPDATE=true
 
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen2.5:7b
@@ -243,7 +244,7 @@ npm run paper:network
 - `PAPER_FETCH_LIMIT`: arXivから取得する最大件数（既定: `25`）
 - `PAPER_MAX_POSTS`: 1回でSlackへ投稿する最大論文数（既定: `5`）
 - `PAPER_LOOKBACK_HOURS`: 新着とみなす時間幅（既定: `48`）
-- `PAPER_POST_EMPTY_UPDATE`: 新着0件でもSlackに投稿するか
+- `PAPER_POST_EMPTY_UPDATE`: 新着0件でもSlackに投稿するか（既定: `true`）
 - `PAPER_STATE_FILE`: 既読論文IDの保存先（既定: `output/network-paper-bot-state.json`）
 - `ARXIV_API_URL`: arXiv APIエンドポイント
 - `ARXIV_USER_AGENT`: arXivアクセス時のUser-Agent
